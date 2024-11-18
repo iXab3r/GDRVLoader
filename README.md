@@ -17,3 +17,6 @@
 <div>
   <img src="https://i.imgur.com/Lp0sHdQ.png" alt="ok">
 </div>
+
+
+Buy me Coffee <3: https://www.paypal.com/paypalme/AlexisDx13
