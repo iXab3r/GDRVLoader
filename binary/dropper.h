@@ -1,7 +1,7 @@
 #pragma once
 #include "bytes.h"
 
-bool DropDriverFromBytes(const wchar_t* path)
+static bool DropDriverFromBytes(const wchar_t* path)
 {
 	HANDLE h_file;
 	BOOLEAN b_status = FALSE;
