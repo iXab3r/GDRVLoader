@@ -84,7 +84,7 @@
       <MinimumRequiredVersion>6.01</MinimumRequiredVersion>
       <AdditionalLibraryDirectories>$(SolutionDir)lib\x64</AdditionalLibraryDirectories>
       <AdditionalOptions>/NOVCFEATURE /NOCOFFGRPINFO %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalDependencies>ntdllp_7.lib;kernel32.lib;shlwapi.lib</AdditionalDependencies>
+      <AdditionalDependencies>ntdllp_7.lib;kernel32.lib;shlwapi.lib;Advapi32.lib</AdditionalDependencies>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
       <GenerateMapFile>true</GenerateMapFile>
       <OptimizeReferences>true</OptimizeReferences>
@@ -137,7 +137,7 @@
       <EntryPointSymbol>
       </EntryPointSymbol>
       <AdditionalOptions>/NOVCFEATURE /NOCOFFGRPINFO %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalDependencies>ntdll.lib;kernel32.lib;shlwapi.lib</AdditionalDependencies>
+      <AdditionalDependencies>ntdll.lib;kernel32.lib;shlwapi.lib;Advapi32.lib</AdditionalDependencies>
       <IgnoreAllDefaultLibraries>
       </IgnoreAllDefaultLibraries>
       <GenerateMapFile>false</GenerateMapFile>

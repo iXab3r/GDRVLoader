@@ -1,92 +1,133 @@
+// SCM-based driver service operations (signature-compatible)
 #pragma once
 #include "../global.h"
-#include <shlwapi.h>
+#include <windows.h>
+#include <winsvc.h>
+#include <memory>
 
 static NTSTATUS LoadDriver(PWCHAR ServiceName)
 {
-    UNICODE_STRING ServiceNameUcs;
-    RtlInitUnicodeString(&ServiceNameUcs, ServiceName);
-
-    Log("Loading the driver via NtLoadDriver(%ls)\n", ServiceNameUcs.Buffer);
-    return NtLoadDriver(&ServiceNameUcs);
-}
-
-static NTSTATUS UnloadDriver(PWCHAR ServiceName)
-{
-    UNICODE_STRING ServiceNameUcs;
-    RtlInitUnicodeString(&ServiceNameUcs, ServiceName);
-
-    Log("Unloading the driver via NtLoadDriver(%ls)\n", ServiceNameUcs.Buffer);
-    return NtUnloadDriver(&ServiceNameUcs);
-}
-
-static void DeleteService(PWCHAR ServiceName)
-{
-    // TODO: shlwapi.dll? holy fuck this is horrible
-    SHDeleteKeyW(HKEY_LOCAL_MACHINE, ServiceName + sizeof(NT_MACHINE) / sizeof(WCHAR) - 1);
-}
-
-static int ConvertToNtPath(PWCHAR Dst, size_t DstLen, PCWSTR Src)
-{
-    const wchar_t* prefix = L"\\??\\";
-    size_t prefixLen = wcslen(prefix);
-    size_t srcLen = wcslen(Src);
-
-    if (prefixLen + srcLen + 1 > DstLen)
-        return 0;
-
-    wcscpy_s(Dst, DstLen, prefix);
-    wcscat_s(Dst, DstLen, Src);
-
-    return static_cast<int>((prefixLen + srcLen + 1) * sizeof(wchar_t));
-}
-
-static void FileNameToServiceName(PWCHAR ServiceName, PWCHAR FileName)
-{
-    int p = sizeof(SVC_BASE) / sizeof(WCHAR) - 1;
-    wcscpy_s(ServiceName, sizeof(SVC_BASE) / sizeof(WCHAR), SVC_BASE);
-    for (PWCHAR i = FileName; *i; ++i)
+    SC_HANDLE hSCManager = OpenSCManager(nullptr, nullptr, SC_MANAGER_CONNECT);
+    if (!hSCManager)
     {
-        if (*i == L'\\')
-            FileName = i + 1;
+        Log(L"OpenSCManager failed: %lu\n", GetLastError());
+        return HRESULT_FROM_WIN32(GetLastError());
     }
-    while (*FileName != L'\0' && *FileName != L'.')
-        ServiceName[p++] = *FileName++;
-    ServiceName[p] = L'\0';
+
+    SC_HANDLE hService = OpenServiceW(hSCManager, ServiceName, SERVICE_START);
+    if (!hService)
+    {
+        Log(L"OpenService failed: %lu\n", GetLastError());
+        CloseServiceHandle(hSCManager);
+        return HRESULT_FROM_WIN32(GetLastError());
+    }
+
+    BOOL result = StartServiceW(hService, 0, nullptr);
+    DWORD err = GetLastError();
+    if (!result && err != ERROR_SERVICE_ALREADY_RUNNING)
+    {
+        Log(L"StartService failed: %lu\n", err);
+        CloseServiceHandle(hService);
+        CloseServiceHandle(hSCManager);
+        return HRESULT_FROM_WIN32(err);
+    }
+
+    CloseServiceHandle(hService);
+    CloseServiceHandle(hSCManager);
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS UnloadDriver(PWCHAR serviceName)
+{
+    SC_HANDLE hSCManager = OpenSCManager(nullptr, nullptr, SC_MANAGER_CONNECT);
+    if (!hSCManager)
+    {
+        Log(L"OpenSCManager failed: %lu\n", GetLastError());
+        return HRESULT_FROM_WIN32(GetLastError());
+    }
+
+    SC_HANDLE hService = OpenServiceW(hSCManager, serviceName, SERVICE_STOP | DELETE);
+    if (!hService)
+    {
+        Log(L"OpenService (for stop/delete) failed: %lu\n", GetLastError());
+        CloseServiceHandle(hSCManager);
+        return HRESULT_FROM_WIN32(GetLastError());
+    }
+
+    SERVICE_STATUS status = {};
+    ControlService(hService, SERVICE_CONTROL_STOP, &status); 
+
+    BOOL deleted = DeleteService(hService);
+    if (!deleted)
+    {
+        Log(L"DeleteService failed: %lu\n", GetLastError());
+    }
+    else
+    {
+        Log(L"Service %ls deleted successfully.\n", serviceName);
+    }
+
+    CloseServiceHandle(hService);
+    CloseServiceHandle(hSCManager);
+    return STATUS_SUCCESS;
+}
+
+static void FileNameToServiceName(PWCHAR ServiceName, PCWSTR FileName)
+{
+    // Strip path and extension to get the base file name
+    PCWSTR lastSlash = wcsrchr(FileName, L'\\');
+    PCWSTR baseName = lastSlash ? lastSlash + 1 : FileName;
+
+    size_t i = 0;
+    while (baseName[i] && baseName[i] != L'.' && i < MAX_PATH - 1)
+    {
+        ServiceName[i] = baseName[i];
+        ++i;
+    }
+    ServiceName[i] = L'\0';
 }
 
 static NTSTATUS GerOrCreateDriverService(PWCHAR ServiceName, PWCHAR FileName)
 {
-    FileNameToServiceName(ServiceName, FileName);
-    NTSTATUS Status = RtlCreateRegistryKey(RTL_REGISTRY_ABSOLUTE, ServiceName);
-    if (!NT_SUCCESS(Status))
-        return Status;
-
-    WCHAR NtPath[MAX_PATH];
-
-    int servicePathLength = ConvertToNtPath(NtPath, MAX_PATH, FileName);
-    if (servicePathLength == 0)
+    SC_HANDLE hSCManager = OpenSCManager(nullptr, nullptr, SC_MANAGER_CREATE_SERVICE);
+    if (!hSCManager)
     {
-        return STATUS_BUFFER_TOO_SMALL;
+        Log(L"OpenSCManager failed: %lu\n", GetLastError());
+        return HRESULT_FROM_WIN32(GetLastError());
     }
 
-    Status = RtlWriteRegistryValue(RTL_REGISTRY_ABSOLUTE,
-                                   ServiceName,
-                                   L"ImagePath",
-                                   REG_EXPAND_SZ,
-                                   NtPath,
-                                   servicePathLength);
-    if (!NT_SUCCESS(Status))
-        return Status;
+    SC_HANDLE hService = CreateServiceW(
+        hSCManager,
+        ServiceName,
+        ServiceName,
+        SERVICE_ALL_ACCESS,
+        SERVICE_KERNEL_DRIVER,
+        SERVICE_DEMAND_START,
+        SERVICE_ERROR_NORMAL,
+        FileName,
+        nullptr, nullptr, nullptr, nullptr, nullptr);
 
-    ULONG ServiceType = SERVICE_KERNEL_DRIVER;
-    Status = RtlWriteRegistryValue(RTL_REGISTRY_ABSOLUTE,
-                                   ServiceName,
-                                   L"Type",
-                                   REG_DWORD,
-                                   &ServiceType,
-                                   sizeof(ServiceType));
-    return Status;
+    DWORD err = GetLastError();
+    if (!hService && err != ERROR_SERVICE_EXISTS)
+    {
+        Log(L"CreateService failed: %lu\n", err);
+        CloseServiceHandle(hSCManager);
+        return HRESULT_FROM_WIN32(err);
+    }
+    else if (!hService)
+    {
+        hService = OpenServiceW(hSCManager, ServiceName, SERVICE_ALL_ACCESS);
+        if (!hService)
+        {
+            Log(L"OpenService fallback failed: %lu\n", GetLastError());
+            CloseServiceHandle(hSCManager);
+            return HRESULT_FROM_WIN32(GetLastError());
+        }
+    }
+
+    CloseServiceHandle(hService);
+    CloseServiceHandle(hSCManager);
+    return STATUS_SUCCESS;
 }
 
 static std::unique_ptr<PrivilegeGuard> EnableLoadDriverPrivilege()

@@ -6,14 +6,14 @@
 #include <iostream>
 #include <string>
 
-NTSTATUS RunAutomaticMode(const wchar_t* driverPath, const wchar_t* command)
+NTSTATUS RunAutomaticMode(const wchar_t* driverPath, const wchar_t* command, const wchar_t* commandArg)
 {
     NTSTATUS status = STATUS_SUCCESS;
 
     if (_wcsicmp(command, L"load") == 0)
     {
         wprintf(L"[Auto] Loading driver: %ls\n", driverPath);
-        status = WindLoadDriver(PWCHAR(driverPath), false);
+        status = WindLoadDriver(PWCHAR(driverPath), PWCHAR(commandArg), false);
         if (!NT_SUCCESS(status))
         {
             printf("FATAL: %08lX Failed to load the driver %ls\n", status, driverPath);
@@ -25,7 +25,7 @@ NTSTATUS RunAutomaticMode(const wchar_t* driverPath, const wchar_t* command)
     else if (_wcsicmp(command, L"unload") == 0)
     {
         wprintf(L"[Auto] Unloading driver: %ls\n", driverPath);
-        status = WindUnloadDriver(PWCHAR(driverPath));
+        status = WindUnloadDriver(PWCHAR(driverPath), PWCHAR(commandArg));
         if (!NT_SUCCESS(status))
         {
             printf("FATAL: %08lX Failed to unload the driver %ls\n", status, driverPath);
@@ -91,7 +91,7 @@ void ShowMenu()
     printf("Select an option: ");
 }
 
-std::wstring ReadDriverPathInput(const wchar_t* prompt)
+std::wstring ReadInput(const wchar_t* prompt)
 {
     std::wstring input;
     std::wcout << prompt;
@@ -123,7 +123,9 @@ void RunManualMode()
         printf("%d\n", choice);
 
         std::wstring driverPath;
+        std::wstring customArg;
         const wchar_t* command = nullptr;
+        const wchar_t* commandArg = nullptr;
 
         switch (choice)
         {
@@ -136,13 +138,28 @@ void RunManualMode()
             driverPath.clear();
             break;
         case 3:
-            driverPath = ReadDriverPathInput(L"Enter full path to driver to load: ");
             command = L"load";
+
+            driverPath = ReadInput(L"Enter full path to driver to load: ");
+            
+            customArg = ReadInput(L"Enter name of the service or leave empty to use default: ");
+
+            if (!customArg.empty())
+                commandArg = customArg.c_str();
+            else
+                commandArg = nullptr;
             break;
 
         case 4:
-            driverPath = ReadDriverPathInput(L"Enter full path to driver to unload: ");
             command = L"unload";
+
+            driverPath = ReadInput(L"Enter full path to driver to unload: ");
+            
+            customArg = ReadInput(L"Enter name of the service or leave empty to use default: ");
+            if (!customArg.empty())
+                commandArg = customArg.c_str();
+            else
+                commandArg = nullptr;
             break;
         case 0:
             return;
@@ -152,10 +169,10 @@ void RunManualMode()
             continue;
         }
 
-        NTSTATUS status = RunAutomaticMode(driverPath.c_str(), command);
+        NTSTATUS status = RunAutomaticMode(driverPath.c_str(), command, commandArg);
         if (!NT_SUCCESS(status))
         {
-            printf("Command failed: 0x%08lX\n", status);
+            printf("Command failed: 0x%08lX\n, driverPath: %ls, command: %ls, commandArg: %ls", status, driverPath.c_str(), command, commandArg);
         }
     }
 }
@@ -166,7 +183,8 @@ int wmain(int argc, wchar_t** argv)
     {
         const wchar_t* driverPath = argv[1];
         const wchar_t* command = (argc >= 3) ? argv[2] : L"load";
-        NTSTATUS status = RunAutomaticMode(driverPath, command);
+        const wchar_t* commandArg = (argc >= 4) ? argv[3] : L"";
+        NTSTATUS status = RunAutomaticMode(driverPath, command, commandArg);
         if (!NT_SUCCESS(status))
         {
             printf("Error: 0x%08lX\n", status);

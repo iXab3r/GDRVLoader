@@ -38,12 +38,14 @@ extern "C" {
 NTSTATUS
 WindLoadDriver(
 	_In_ PWCHAR DriverFilePath,
-	_In_ BOOLEAN Hidden
+    _In_opt_ PWCHAR CustomServiceName,
+	_In_opt_ BOOLEAN Hidden
 	);
 
 NTSTATUS
 WindUnloadDriver(
-	_In_ PWCHAR DriverFilePath
+	_In_ PWCHAR DriverFilePath,
+    _In_opt_ PWCHAR CustomServiceName
 	);
 
 // sysinfo.cpp
