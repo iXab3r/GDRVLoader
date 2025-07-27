@@ -4,11 +4,12 @@
 #include "utils/ntdll.h"
 #include <ntstatus.h>
 #include <iostream>
+#include "./utils/logger.h"
 
-const BYTE Pattern_CipInit_1709[17]  = "\x4c\x8b\xcb\x4c\x8b\xc7\x48\x8b\xd6\x8b\xcd\xe8\x00\x00\x00\x00";
+const BYTE Pattern_CipInit_1709[17] = "\x4c\x8b\xcb\x4c\x8b\xc7\x48\x8b\xd6\x8b\xcd\xe8\x00\x00\x00\x00";
 const BYTE Pattern_CipInit_26100[22] = "\x4c\x8b\xcb\x44\x8b\xc7\x48\x89\x44\x24\x20\x48\x8b\xd6\x8b\xcd\xe8\x00\x00\x00\x00";
 const BYTE Pattern_CipInit[13] = "\x41\x8b\xca\x48\x83\xc4\x28\xe9\x00\x00\x00\x00";
-const BYTE Pattern_gCiOptions[10]       = "\x49\x8b\xe9\x89\x0d\x00\x00\x00\x00";
+const BYTE Pattern_gCiOptions[10] = "\x49\x8b\xe9\x89\x0d\x00\x00\x00\x00";
 const BYTE Pattern_gCiOptions_26100[10] = "\x48\x8b\xea\x89\x0d\x00\x00\x00\x00";
 const BYTE Pattern_gCiEnabled[5] = "\xeb\x06\x88\x1d";
 
@@ -36,15 +37,15 @@ extern "C" {
 // swind2.cpp
 NTSTATUS
 WindLoadDriver(
-	_In_ PWCHAR LoaderName,
-	_In_ PWCHAR DriverName,
-	_In_ BOOLEAN Hidden
+	_In_ PWCHAR DriverFilePath,
+    _In_opt_ PWCHAR CustomServiceName,
+	_In_opt_ BOOLEAN Hidden
 	);
 
 NTSTATUS
 WindUnloadDriver(
-	_In_ PWCHAR DriverName,
-	_In_ BOOLEAN Hidden
+	_In_ PWCHAR DriverFilePath,
+    _In_opt_ PWCHAR CustomServiceName
 	);
 
 // sysinfo.cpp
@@ -68,16 +69,14 @@ GetProcedureAddress(
 	);
 
 FORCEINLINE
-ULONG
-RtlNtMajorVersion(
+ULONG RtlNtMajorVersion(
 	)
 {
 	return *reinterpret_cast<PULONG>(0x7FFE0000 + 0x026C);
 }
 
 FORCEINLINE
-ULONG
-RtlNtMinorVersion(
+ULONG RtlNtMinorVersion(
 	)
 {
 	return *reinterpret_cast<PULONG>(0x7FFE0000 + 0x0270);
@@ -85,8 +84,7 @@ RtlNtMinorVersion(
 
 CONSTEXPR
 FORCEINLINE
-LONGLONG
-RtlMsToTicks(
+LONGLONG RtlMsToTicks(
 	_In_ ULONG Milliseconds
 	)
 {
@@ -94,8 +92,7 @@ RtlMsToTicks(
 }
 
 FORCEINLINE
-VOID
-RtlSleep(
+VOID RtlSleep(
 	_In_ ULONG Milliseconds
 	)
 {
@@ -106,8 +103,7 @@ RtlSleep(
 
 CONSTEXPR
 FORCEINLINE
-BOOLEAN
-IsWin64(
+BOOLEAN IsWin64(
 	)
 {
 #if defined(_WIN64) || defined(_M_AMD64)
@@ -118,12 +114,11 @@ IsWin64(
 }
 
 inline
-VOID
-WaitForKey(
+VOID WaitForKey(
 	)
 {
 	HANDLE StdIn = NtCurrentPeb()->ProcessParameters->StandardInput;
-	INPUT_RECORD InputRecord = { 0 };
+	INPUT_RECORD InputRecord = {0};
 	ULONG NumRead;
 	while (InputRecord.EventType != KEY_EVENT || !InputRecord.Event.KeyEvent.bKeyDown || InputRecord.Event.KeyEvent.dwControlKeyState !=
 		(InputRecord.Event.KeyEvent.dwControlKeyState & ~(RIGHT_CTRL_PRESSED | LEFT_CTRL_PRESSED)))
